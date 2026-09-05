@@ -1,0 +1,36 @@
+name: ci
+
+on:
+  push: { branches: [main] }
+  pull_request: { branches: [main] }
+
+jobs:
+  analysis-selftests:
+    # The analysis code carries its own checks. They run in seconds and fail the
+    # build before anything expensive starts.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - run: pip install pandas numpy matplotlib
+      - run: bin/scale_factors.py --demo
+      - run: bin/compare_methods.py --demo
+
+  pipeline-dag:
+    # -stub executes every process's stub block, so the whole DAG, the channel
+    # wiring and the parameter plumbing are exercised without moving any data.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - uses: nf-core/setup-nextflow@v2
+      - run: nextflow run . -profile test -stub --outdir ci_results
+      - run: test -f ci_results/pipeline_info/dag.html
+
+  container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t cnb:ci .

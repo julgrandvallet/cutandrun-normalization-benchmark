@@ -1,0 +1,2 @@
+id,numerator,denominator,expected_direction,rationale
+esr1_ko_vs_wt,ESR1_KO,ESR1_WT,down,CRISPR disruption of ESR1 removes the profiled protein; ER binding should collapse genome-wide

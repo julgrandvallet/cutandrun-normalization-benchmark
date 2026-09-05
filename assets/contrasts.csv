@@ -1,0 +1,3 @@
+id,numerator,denominator,expected_direction,rationale
+esr1_ko_vs_wt,ESR1_KO,ESR1_WT,down,CRISPR disruption of ESR1 removes the profiled protein; ER binding should collapse genome-wide
+e2_vs_vehicle,estradiol,charcoal_stripped,up,Estradiol activates ER and increases chromatin binding genome-wide
