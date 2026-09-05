@@ -39,6 +39,8 @@ opt <- parse_args(OptionParser(option_list = list(
   make_option("--numerator",   type = "character"),
   make_option("--denominator", type = "character"),
   make_option("--fdr",         type = "double", default = 0.05),
+  make_option("--control-target", type = "character", default = "IgG",
+              dest = "control_target"),
   make_option("--out",         type = "character")
 )))
 
@@ -67,9 +69,27 @@ rownames(cts) <- regions
 meta <- read.csv(opt$samplesheet)
 sf   <- read.delim(opt$scale_factors, row.names = 1, check.names = FALSE)
 
-keep_samples <- meta$sample[meta$condition %in% c(opt$numerator, opt$denominator)]
-keep_samples <- intersect(keep_samples, colnames(cts))
-stopifnot(length(keep_samples) >= 4)
+# Control libraries share a condition label with the samples they control, so
+# selecting on condition alone would silently pull IgG into the test group.
+# It happens not to reach the matrix today only because the counts step already
+# dropped it; that is luck, not a guarantee, so exclude it explicitly here too.
+in_contrast <- meta$condition %in% c(opt$numerator, opt$denominator)
+is_control  <- meta$target == opt$control_target
+keep_samples <- intersect(meta$sample[in_contrast & !is_control], colnames(cts))
+
+dropped <- setdiff(meta$sample[in_contrast & is_control], keep_samples)
+if (length(dropped)) message(sprintf("[%s] excluded %s control librar%s: %s",
+    opt$method, opt$control_target, if (length(dropped) == 1) "y" else "ies",
+    paste(dropped, collapse = ", ")))
+
+if (length(keep_samples) < 4) {
+  stop(sprintf(paste0("contrast %s vs %s has %d usable samples (need >= 4). ",
+                      "Check that the samplesheet conditions match the ",
+                      "contrasts file and that control libraries are labelled ",
+                      "target=%s."),
+               opt$numerator, opt$denominator, length(keep_samples),
+               opt$control_target))
+}
 
 cts   <- cts[, keep_samples, drop = FALSE]
 group <- factor(meta$condition[match(keep_samples, meta$sample)],

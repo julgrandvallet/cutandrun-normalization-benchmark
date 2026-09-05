@@ -29,8 +29,17 @@ jobs:
       - run: nextflow run . -profile test -stub --outdir ci_results
       - run: test -f ci_results/pipeline_info/dag.html
 
-  container:
+  simulation:
+    # The real test. Runs bowtie2, samtools, bedtools, edgeR and DESeq2 on
+    # simulated reads whose answer is known before they are generated, then
+    # asserts that spike-in normalization recovers the planted truth and that
+    # library-size normalization does not. If the benchmark ever stops
+    # discriminating, this fails.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - run: docker build -t cnb:ci .
+      - name: end-to-end simulation with planted ground truth
+        run: |
+          docker run --rm -v "$PWD":/w -w /w --entrypoint bash cnb:ci \
+            tests/simulation_test.sh /tmp/simtest

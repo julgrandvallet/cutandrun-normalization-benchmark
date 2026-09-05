@@ -6,10 +6,11 @@
 [![Nextflow](https://img.shields.io/badge/nextflow-%E2%89%A523.10-0DC09D)](https://www.nextflow.io/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-> **Status:** pipeline validated end to end in stub mode (CI runs the full DAG on every commit)
-> and both analysis scripts pass their self-checks. The full run on GSE331454 is in progress;
-> the results table below will be filled in from that run, not before. No numbers are reported here
-> that the pipeline has not produced.
+> **Status:** validated end to end on simulated data with a planted ground truth — real bowtie2,
+> samtools, bedtools, edgeR and DESeq2, asserted in CI on every commit (see
+> [Validation](#validation-the-benchmark-tests-itself)). The run on the real dataset, GSE331454,
+> is in progress; [Results](#results-gse331454) will be filled in from that run and not before.
+> Every number on this page was produced by this pipeline.
 
 ---
 
@@ -109,16 +110,59 @@ nextflow run julgrandvallet/cutandrun-normalization-benchmark -profile slurm
 
 # Validate the whole DAG in ~30 seconds, no data required
 nextflow run julgrandvallet/cutandrun-normalization-benchmark -profile test -stub
+
+# Prove the benchmark actually discriminates, on simulated data (~2 min, needs the toolchain)
+tests/simulation_test.sh
 ```
 
 Your own data: point `--samplesheet` and `--contrasts` at your own CSVs
 (see [`assets/`](assets/)). `expected_direction` in the contrasts file is what makes a contrast
 scoreable; omit it and the contrast is analysed but not graded.
 
-## Results
+## Validation: the benchmark tests itself
 
-Pending the full run. This section will report the scored table produced by
+A benchmark that scores methods is itself code, and code that has never been run on a case with
+a known answer has not been tested. [`bin/simulate_reads.py`](bin/simulate_reads.py) generates
+that case.
+
+Spike-in carrier is added per cell, so its absolute amount does not depend on the target.
+Sequencing then fills a fixed number of reads from whatever is in the library. When target
+signal collapses, fewer target fragments compete for that fixed output, so the carrier is
+sampled more deeply. Simulating a true **fourfold loss** at 60 shared peak regions:
+
+```
+              pre-sequencing              after sequencing to equal depth
+condition   peak    bg    spike      peak    bg     spike    target
+WT         30000  5000    10000     30000  5000     10000     35000
+KO          7500  5000    10000     15000 10000     20000     25000
+```
+
+`tests/simulation_test.sh` then runs the real toolchain over those reads. Result:
+
+| method | median log2FC | n_sig | directional purity | recovers truth |
+|---|---|---|---|---|
+| `spikein_dm6` | −0.10 | 104 | **0.98** | **yes** |
+| `library_size` | **+1.38** | 480 | **0.16** | no |
+| `none` | +0.89 | 405 | 0.21 | no |
+
+**Library-size normalization reports a fourfold loss as a significant gain at 480 regions.**
+Not a loss of power, not a conservative result: the wrong sign, with high confidence. It cannot
+distinguish "this sample has less signal" from "this sample was sequenced less deeply", so it
+corrects away the biology and then, because the unchanged background is now scaled up, reports
+that background as newly enriched.
+
+Spike-in normalization recovers the planted truth at 98% directional purity.
+
+CI asserts all of this on every commit. If the benchmark ever stops discriminating between the
+two methods, the build fails.
+
+## Results: GSE331454
+
+Pending the full run on the real dataset. This section will report the scored table from
 `results/benchmark/benchmark_summary.tsv` and the figures in `results/benchmark/figures/`.
+
+The simulation above establishes that the machinery detects the effect when it is present. It
+does not establish the size of the effect in real data, which is the point of the full run.
 
 ## Layout
 
@@ -128,12 +172,16 @@ modules/local/                 one process per file
 bin/scale_factors.py           bowtie2 logs -> every scale factor under test
 bin/differential_binding.R     edgeR + DESeq2 from one shared count matrix
 bin/compare_methods.py         scoring against ground truth, figures
+bin/simulate_reads.py          reads with a planted ground truth, for validation
+tests/simulation_test.sh       end-to-end integration test, asserted in CI
 assets/                        samplesheet, contrasts, tiny test genomes
 docs/decisions.md              analysis choices and why
 ```
 
-Both Python scripts carry `--demo` self-checks that run in seconds and are executed by CI and by
-the Docker build, so a broken assumption fails at build time rather than six hours into a run.
+All three Python scripts carry `--demo` self-checks that run in seconds and are executed by CI and
+by the Docker build, so a broken assumption fails at build time rather than six hours into a run.
+`simulate_reads.py --demo` asserts the simulated design still separates the methods before a
+single read is written.
 
 ## Design decisions
 

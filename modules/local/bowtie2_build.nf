@@ -12,7 +12,9 @@ process BOWTIE2_BUILD {
     script:
     """
     mkdir -p index
-    curl -fsSL ${fasta_url} | gunzip -c > index/${genome_name}.fa
+    # A genome source is either a URL or a path on disk; both are read the same way.
+    if [ -f "${fasta_url}" ]; then CAT="cat ${fasta_url}"; else CAT="curl -fsSL ${fasta_url}"; fi
+    \$CAT | gunzip -c > index/${genome_name}.fa
     bowtie2-build --threads ${task.cpus} index/${genome_name}.fa index/${genome_name}
     """
 

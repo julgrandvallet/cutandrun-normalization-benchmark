@@ -25,22 +25,34 @@ workflow {
     samplesheet = file(params.samplesheet, checkIfExists: true)
     contrasts   = file(params.contrasts,   checkIfExists: true)
 
+    // A samplesheet gives either an SRA accession to fetch or local FASTQ
+    // paths. Local paths let the simulation profile drive the real pipeline
+    // without touching the network.
     ch_samples = Channel.fromPath(samplesheet)
         .splitCsv(header: true)
-        .map { [sample: it.sample, srr: it.srr, target: it.target,
-                condition: it.condition, replicate: it.replicate] }
+        .map { row ->
+            def meta = [sample: row.sample, target: row.target,
+                        condition: row.condition, replicate: row.replicate,
+                        srr: row.srr ?: null]
+            row.fastq_1 ? [meta, [file(row.fastq_1, checkIfExists: true),
+                                  file(row.fastq_2, checkIfExists: true)]]
+                        : [meta, null]
+        }
+        .branch { meta, reads -> local: reads; remote: !reads }
 
     // One index per genome: the target plus every spike-in.
     ch_genomes = Channel.fromList(
         params.genomes.collect { name, url -> tuple(name, url) })
 
     BOWTIE2_BUILD(ch_genomes)
-    FETCH_FASTQ(ch_samples)
+    FETCH_FASTQ(ch_samples.remote.map { meta, reads -> meta })
+
+    ch_reads = FETCH_FASTQ.out.reads.mix(ch_samples.local)
 
     // Cross every sample with every genome. Spike-in counts therefore come from
     // the same aligner and the same parameters as the target counts, which is
     // what makes the ratio between them meaningful.
-    BOWTIE2_ALIGN(FETCH_FASTQ.out.reads.combine(BOWTIE2_BUILD.out.index))
+    BOWTIE2_ALIGN(ch_reads.combine(BOWTIE2_BUILD.out.index))
 
     ch_target_bam = BOWTIE2_ALIGN.out.bam
         .filter { meta, genome, bam, bai -> genome == params.target_genome }
@@ -48,14 +60,18 @@ workflow {
     DEDUP(ch_target_bam)
 
     // The IgG library is the MACS2 control, not a sample to be tested.
+    // .first() makes this a value channel holding exactly one file, so every
+    // MACS2 task can reuse it. Passing the collected list instead would hand
+    // the process a List where it expects a single path.
     ch_igg = DEDUP.out.bam
         .filter { meta, bam, bai -> meta.target == params.igg_label }
         .map { meta, bam, bai -> bam }
-        .ifEmpty { file("${projectDir}/assets/NO_CONTROL") }
+        .ifEmpty(file("${projectDir}/assets/NO_CONTROL"))
+        .first()
 
     ch_signal = DEDUP.out.bam.filter { meta, bam, bai -> meta.target != params.igg_label }
 
-    MACS2_CALLPEAK(ch_signal, ch_igg.collect())
+    MACS2_CALLPEAK(ch_signal, ch_igg)
 
     // Sort by sample name so the count-matrix columns and the samplesheet rows
     // stay in the same order. bedtools multicov emits columns in -bams order.
