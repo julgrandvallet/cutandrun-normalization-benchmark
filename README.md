@@ -141,17 +141,17 @@ KO          7500  5000    10000     15000 10000     20000     25000
 
 | method | median log2FC | n_sig | directional purity | recovers truth |
 |---|---|---|---|---|
-| `spikein_dm6` | −0.10 | 104 | **0.98** | **yes** |
-| `library_size` | **+1.38** | 480 | **0.16** | no |
-| `none` | +0.89 | 405 | 0.21 | no |
+| `spikein_dm6` | −0.12 | 101 | **1.00** | **yes** |
+| `library_size` | **+1.36** | 482 | **0.17** | no |
+| `none` | +0.88 | 406 | 0.22 | no |
 
-**Library-size normalization reports a fourfold loss as a significant gain at 480 regions.**
+**Library-size normalization reports a fourfold loss as a significant gain at 482 regions.**
 Not a loss of power, not a conservative result: the wrong sign, with high confidence. It cannot
 distinguish "this sample has less signal" from "this sample was sequenced less deeply", so it
 corrects away the biology and then, because the unchanged background is now scaled up, reports
 that background as newly enriched.
 
-Spike-in normalization recovers the planted truth at 98% directional purity.
+Spike-in normalization recovers the planted truth at 100% directional purity.
 
 CI asserts all of this on every commit. If the benchmark ever stops discriminating between the
 two methods, the build fails.

@@ -43,6 +43,7 @@ import argparse
 import gzip
 import random
 import sys
+import zlib
 from pathlib import Path
 
 READ_LEN = 50
@@ -129,7 +130,7 @@ def main() -> None:
             s = f"{cond}_R{rep}"
             f1, f2 = fq / f"{s}_1.fastq.gz", fq / f"{s}_2.fastq.gz"
             simulate(target, spikein, peaks, counts,
-                     random.Random(a.seed + hash(s) % 10_000), f1, f2, s)
+                     random.Random(a.seed + zlib.crc32(s.encode()) % 10_000), f1, f2, s)
             rows.append(f"{s},{f1.resolve()},{f2.resolve()},ER,{cond},{rep}")
             print(f"  {s}: peak={counts[0]} bg={counts[1]} spikein={counts[2]}")
 
